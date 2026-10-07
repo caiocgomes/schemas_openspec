@@ -11,13 +11,13 @@
 #   --no-update  não atualiza a cópia local do kit antes de instalar
 #
 # Variáveis de ambiente:
-#   OPENSPEC_KIT_REPO  repositório no GitHub (padrão: caiocgomes/openspec-kit)
+#   OPENSPEC_KIT_REPO  repositório no GitHub (padrão: caiocgomes/schemas_openspec)
 #   OPENSPEC_KIT_HOME  onde o kit é baixado (padrão: ~/.local/share/openspec-kit)
 #
 # Saída: 0 ok; 1 erro; 3 algum schema instalado difere do kit e não foi substituído (use --force).
 set -euo pipefail
 
-KIT_REPO="${OPENSPEC_KIT_REPO:-caiocgomes/openspec-kit}"
+KIT_REPO="${OPENSPEC_KIT_REPO:-caiocgomes/schemas_openspec}"
 KIT_HOME="${OPENSPEC_KIT_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/openspec-kit}"
 MIN_NOSPEC_VERSION="1.10.0"   # research e spike precisam disso para o validate aceitar change sem delta
 

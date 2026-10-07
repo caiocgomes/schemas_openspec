@@ -18,14 +18,16 @@ Artefatos depois do `apply` (`evidence`, `results`, `findings`) ficam no grafo p
 
 ## Instalação
 
-Pré-requisitos: Node, o OpenSpec (`npm install -g @fission-ai/openspec@latest`) e, como o repositório é privado, o GitHub CLI autenticado (`gh auth login`). O projeto de destino precisa ter rodado `openspec init`.
+Pré-requisitos: Node, git e o OpenSpec (`npm install -g @fission-ai/openspec@latest`). O projeto de destino precisa ter rodado `openspec init`.
 
 Num computador novo, um comando baixa o kit para `~/.local/share/openspec-kit` e instala os schemas no projeto:
 
 ```bash
-gh api repos/caiocgomes/openspec-kit/contents/install.sh \
-  -H 'Accept: application/vnd.github.raw' | bash -s -- /caminho/do/projeto
+curl -fsSL https://raw.githubusercontent.com/caiocgomes/schemas_openspec/main/install.sh \
+  | bash -s -- /caminho/do/projeto
 ```
+
+Para instalar só alguns schemas, passe as opções depois do caminho: `| bash -s -- . --schemas data-eng --default data-eng`.
 
 Rodar o mesmo comando de novo atualiza a cópia baixada (`git pull`) antes de instalar. Com o kit já clonado, dá para chamar o script direto:
 
