@@ -135,17 +135,25 @@ done
 
 schema_version() { sed -n 's/^version:[[:space:]]*//p' "$1/schema.yaml" 2>/dev/null | head -1; }
 
+# Compara ignorando arquivos que o sistema operacional cria sozinho.
+schema_diff() { diff -rq -x '.DS_Store' -x '._*' -x 'Thumbs.db' -x 'desktop.ini' "$1" "$2" 2>&1; }
+
 # --- 4. Copia ------------------------------------------------------------------
 mkdir -p "$DST_SCHEMAS"
 INSTALLED=(); UPDATED=(); UNCHANGED=(); SKIPPED=()
 for s in "${SELECTED[@]}"; do
   src="$SRC_SCHEMAS/$s"; dst="$DST_SCHEMAS/$s"
   if [ -e "$dst" ]; then
-    if diff -rq "$src" "$dst" >/dev/null 2>&1; then
+    if DIFF_OUT="$(schema_diff "$src" "$dst")"; then
       UNCHANGED+=("$s"); continue
     fi
     if [ "$FORCE" -ne 1 ]; then
-      echo "aviso: $s instalado (version $(schema_version "$dst")) difere do kit (version $(schema_version "$src")); mantido. Use --force para substituir." >&2
+      {
+        echo "aviso: $s no projeto (version $(schema_version "$dst")) difere do kit (version $(schema_version "$src")); mantido."
+        echo "  arquivos diferentes (kit x projeto):"
+        printf '%s\n' "$DIFF_OUT" | sed -e "s|$src|kit|g" -e "s|$dst|projeto|g" -e 's/^/    /' | head -8
+        echo "  se você não adaptou esse schema no projeto, rode de novo com --force para trocar pela versão do kit."
+      } >&2
       SKIPPED+=("$s"); continue
     fi
     rm -rf "$dst"; cp -R "$src" "$dst"; UPDATED+=("$s")
