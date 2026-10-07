@@ -1,5 +1,7 @@
 # openspec-kit: schemas do OpenSpec para o time
 
+Versão do kit: **3.0.0** (histórico em [CHANGELOG.md](CHANGELOG.md)).
+
 Cinco schemas de workflow para o [OpenSpec](https://openspec.dev), prontos para copiar para dentro de um projeto. Cada schema define quais documentos uma change produz, em que ordem e com quais instruções o agente de IA trabalha em cada etapa. Os schemas não dependem de uma ferramenta de agente específica: funcionam com qualquer uma suportada pelo OpenSpec.
 
 ## Os schemas

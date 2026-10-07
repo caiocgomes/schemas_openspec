@@ -87,7 +87,8 @@ fi
 SRC_SCHEMAS="$KIT_DIR/openspec/schemas"
 [ -d "$SRC_SCHEMAS" ] || fail "schemas não encontrados em $SRC_SCHEMAS"
 KIT_REV="$(git -C "$KIT_DIR" rev-parse --short HEAD 2>/dev/null || echo "sem-git")"
-info "kit: $KIT_DIR ($KIT_REV)"
+KIT_VERSION="$(head -1 "$KIT_DIR/VERSION" 2>/dev/null | tr -d '[:space:]')"
+info "kit ${KIT_VERSION:-sem versão} ($KIT_REV): $KIT_DIR"
 
 # --- 2. Confere o OpenSpec -----------------------------------------------------
 command -v openspec >/dev/null 2>&1 \
