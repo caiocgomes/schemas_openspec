@@ -43,6 +43,9 @@ Opções:
 | `--default data-eng` | define `schema:` em `openspec/config.yaml` |
 | `--force` | substitui schemas já instalados que estejam diferentes da versão do kit |
 | `--no-update` | não atualiza a cópia baixada antes de instalar |
+| `--no-profile` | não mexe no perfil de workflows da máquina |
+
+Por padrão, o instalador também deixa a máquina no **perfil expandido**: grava na config global do OpenSpec (`openspec config path`) o perfil `custom` com os doze workflows (os seis do `core` mais `new`, `continue`, `ff`, `verify`, `bulk-archive` e `onboard`), guarda um backup da config anterior ao lado dela e roda `openspec update` no projeto para gerar os comandos. Se a gravação falhar, a config é restaurada. O perfil vale para todos os projetos da máquina, e um projeto que outra pessoa atualizou com outro perfil volta ao expandido no próximo `openspec update` feito aqui.
 
 O script confere a versão do OpenSpec (`research` e `spike` exigem 1.10.0 ou superior), copia os schemas, roda `openspec schema validate` e confirma que cada um resolve a partir do projeto. Quando um schema instalado difere do kit, o script não o sobrescreve: avisa e sai com código 3, e `--force` faz a troca.
 

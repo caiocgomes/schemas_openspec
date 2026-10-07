@@ -2,13 +2,18 @@
 # openspec-kit: baixa (ou atualiza) o kit e instala os schemas do OpenSpec num projeto.
 #
 # Uso:
-#   install.sh [<raiz-do-projeto>] [--schemas a,b,...] [--default <schema>] [--force] [--no-update]
+#   install.sh [<raiz-do-projeto>] [--schemas a,b,...] [--default <schema>] [--force] [--no-update] [--no-profile]
 #
-# Sem argumentos: projeto no diretório atual, todos os schemas do kit.
-#   --schemas    lista separada por vírgula (padrão: todos)
-#   --default    define `schema:` em openspec/config.yaml
-#   --force      substitui schemas já instalados que estejam diferentes da versão do kit
-#   --no-update  não atualiza a cópia local do kit antes de instalar
+# Sem argumentos: projeto no diretório atual, todos os schemas do kit, perfil expandido.
+#   --schemas     lista separada por vírgula (padrão: todos)
+#   --default     define `schema:` em openspec/config.yaml
+#   --force       substitui schemas já instalados que estejam diferentes da versão do kit
+#   --no-update   não atualiza a cópia local do kit antes de instalar
+#   --no-profile  não mexe no perfil de workflows da máquina
+#
+# Perfil expandido: grava na config global do OpenSpec (com backup) o perfil `custom` com os
+# doze workflows (core + new, continue, ff, verify, bulk-archive, onboard) e roda
+# `openspec update` no projeto para gerar os comandos.
 #
 # Variáveis de ambiente:
 #   OPENSPEC_KIT_REPO  repositório no GitHub (padrão: caiocgomes/schemas_openspec)
@@ -20,17 +25,19 @@ set -euo pipefail
 KIT_REPO="${OPENSPEC_KIT_REPO:-caiocgomes/schemas_openspec}"
 KIT_HOME="${OPENSPEC_KIT_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/openspec-kit}"
 MIN_NOSPEC_VERSION="1.10.0"   # research e spike precisam disso para o validate aceitar change sem delta
+EXPANDED_WORKFLOWS="propose explore new continue ff apply update verify sync archive bulk-archive onboard"
 
 PROJECT_ROOT="."
 SCHEMAS_ARG=""
 DEFAULT_SCHEMA=""
 FORCE=0
 UPDATE=1
+PROFILE=1
 
 fail() { echo "erro: $*" >&2; exit 1; }
 info() { echo "$*"; }
 
-usage() { sed -n '2,18p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//' || true; }
+usage() { sed -n '2,23p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//' || true; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -40,6 +47,7 @@ while [ $# -gt 0 ]; do
     --default=*) DEFAULT_SCHEMA="${1#*=}"; shift ;;
     --force) FORCE=1; shift ;;
     --no-update) UPDATE=0; shift ;;
+    --no-profile) PROFILE=0; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) fail "opção desconhecida: $1" ;;
     *) PROJECT_ROOT="$1"; shift ;;
@@ -170,7 +178,52 @@ if [ -n "$DEFAULT_SCHEMA" ]; then
   info "padrão do projeto: schema: $DEFAULT_SCHEMA"
 fi
 
-# --- 7. Resumo -----------------------------------------------------------------
+# --- 7. Perfil expandido ---------------------------------------------------------
+profile_is_expanded() {
+  local p wf w
+  p="$(openspec config get profile 2>/dev/null | tr -d '[:space:]')"
+  [ "$p" = custom ] || return 1
+  wf="$(openspec config get workflows 2>/dev/null)"
+  for w in $EXPANDED_WORKFLOWS; do
+    printf '%s' "$wf" | grep -q "\"$w\"" || return 1
+  done
+  return 0
+}
+
+if [ "$PROFILE" -eq 1 ]; then
+  if profile_is_expanded; then
+    info "perfil expandido: já ativo nesta máquina"
+  else
+    CFG_PATH="$(openspec config path 2>/dev/null | tail -1 | tr -d '[:space:]')"
+    BACKUP=""
+    if [ -n "$CFG_PATH" ] && [ -f "$CFG_PATH" ]; then
+      BACKUP="$CFG_PATH.bak-$(date +%Y%m%d%H%M%S)"
+      cp "$CFG_PATH" "$BACKUP"
+    fi
+    WF_JSON="[$(for w in $EXPANDED_WORKFLOWS; do printf '"%s",' "$w"; done | sed 's/,$//')]"
+    if openspec config set profile custom >/dev/null 2>&1 \
+       && openspec config set workflows "$WF_JSON" >/dev/null 2>&1 \
+       && profile_is_expanded; then
+      info "perfil expandido: gravado na config global${BACKUP:+ (backup em $BACKUP)}"
+    else
+      if [ -n "$BACKUP" ]; then cp "$BACKUP" "$CFG_PATH"; fi
+      fail "não consegui gravar o perfil expandido; config restaurada. Use 'openspec config profile' ou rode com --no-profile."
+    fi
+  fi
+  # Gera os comandos do perfil no projeto. Sem --force: nunca apaga arquivos legados fora do projeto.
+  UPDATE_RC=0
+  UPDATE_OUT="$(openspec update "$PROJECT_ROOT" </dev/null 2>&1)" || UPDATE_RC=$?
+  case "$UPDATE_OUT" in
+    *"No configured tools"*) info "aviso: o projeto não tem ferramenta de agente configurada; rode 'openspec init' no projeto para escolher uma" ;;
+    *) if [ "$UPDATE_RC" -eq 0 ]; then
+         info "comandos do OpenSpec regenerados no projeto (openspec update)"
+       else
+         echo "aviso: 'openspec update' falhou no projeto; rode-o manualmente para ver o erro" >&2
+       fi ;;
+  esac
+fi
+
+# --- 8. Resumo -----------------------------------------------------------------
 [ ${#INSTALLED[@]} -gt 0 ] && info "instalados:    ${INSTALLED[*]}"
 [ ${#UPDATED[@]} -gt 0 ]   && info "atualizados:   ${UPDATED[*]}"
 [ ${#UNCHANGED[@]} -gt 0 ] && info "já em dia:     ${UNCHANGED[*]}"
