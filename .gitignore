@@ -1,0 +1,3 @@
+# lições locais do agente (carregadas por hook), não vão para o time
+tasks/
+.DS_Store

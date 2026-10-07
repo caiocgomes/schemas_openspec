@@ -1,0 +1,126 @@
+name: bugfix
+version: 2
+description: Bug fix driven by reproduction - bug → specs → tasks; no fix before a failing regression test and a confirmed root cause, and every bug adds its failure scenario to the spec
+artifacts:
+  - id: bug
+    generates: bug.md
+    description: Defect report with reproduction, root-cause hypothesis and the regression test that must fail before any fix
+    template: bug.md
+    instruction: |
+      Create bug.md, which pins down the defect BEFORE any fix exists.
+
+      Sections (keep the headings exactly as in the template):
+      - **Observed vs Expected**: the exact observed behavior (error message, wrong value,
+        wrong state) and the expected behavior. Name the source of the expectation:
+        an existing requirement in openspec/specs/, documentation, an API or data contract,
+        or a user expectation that was never written down. Say which.
+      - **Reproduction**: minimal steps, environment and version, input data, and frequency
+        (always, or intermittent with an observed rate). If you cannot reproduce the bug,
+        say so and STOP to ask the user. Do not plan a fix for a bug nobody reproduced.
+      - **Root Cause Hypothesis**: the suspected cause, the evidence that points to it,
+        and how apply will confirm or refute it. It is a hypothesis until apply confirms it.
+      - **Regression Test**: the test that reproduces the bug. Fields: Scenario (the
+        scenario name used in the delta spec), Test name, Test file, Test type
+        (unit | integration | e2e), GIVEN / WHEN / THEN, `State: red`, and an empty
+        Evidence field. The THEN must describe the CORRECT behavior, so the test fails on
+        the current code for the reason described under Observed.
+      - **Fix Scope**: what the fix will change and, explicitly, what it will not change.
+      - **Affected Capability**: the kebab-case capability name. Check openspec/specs/
+        for an existing capability before inventing a new name.
+
+      Machine-read tokens: keep `State: red|green` and the section headings in English,
+      exactly as in the template. Write the prose in the project's language.
+
+      Use the project context from openspec/config.yaml (rendered as the <project_context>
+      block when configured) to match the project's test framework and vocabulary.
+    requires: []
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Delta spec that records the violated behavior as a requirement with its regression scenario
+    template: spec.md
+    instruction: |
+      Record the behavior the bug violated as a requirement, so the spec of record gains
+      the failure scenario this bug exposed. Every bug fix grows the spec by at least one
+      scenario.
+
+      Create exactly ONE delta spec at specs/<affected-capability>/spec.md, using the
+      capability named in bug.md.
+
+      Choose the delta operation:
+      - The capability exists in openspec/specs/ AND the violated behavior is already a
+        requirement there: use `## MODIFIED Requirements`. Copy the ENTIRE existing
+        requirement block (from `### Requirement:` through all its scenarios), keep it
+        intact, and add the regression scenario. Header text must match exactly.
+      - The capability exists but the behavior was never written as a requirement: use
+        `## ADDED Requirements` with one new requirement.
+      - The capability has no spec yet: create specs/<capability>/spec.md with ONLY this
+        requirement under `## ADDED Requirements`. Do not write the whole capability
+        spec. It grows one bug at a time.
+
+      Use the exact capability path from openspec/specs/ when it exists (confirm with
+      `openspec list --specs`); paths may be nested by domain. Do not move or rename an
+      existing capability.
+
+      Format rules:
+      - Each requirement: `### Requirement: <name>` followed by text using SHALL/MUST.
+      - ONE behavior per requirement. Keep a NEW requirement's description at 500
+        characters or fewer (`openspec validate --strict` fails above that). Under
+        MODIFIED, keep the existing block whole; never trim it to meet the limit.
+      - Each scenario: `#### Scenario: <name>` (exactly 4 hashtags) with WHEN/THEN bullets.
+      - The requirement MUST include the regression scenario, with the same name as the
+        Scenario field in bug.md's Regression Test section.
+      - Every THEN MUST be mechanically assertable: a concrete value, state, error type,
+        or side effect.
+    requires:
+      - bug
+
+  - id: tasks
+    generates: tasks.md
+    description: Fixed reproduce-confirm-fix-record checklist
+    template: tasks.md
+    instruction: |
+      Create the task list. Follow the template order; the apply phase parses `- [ ]`
+      checkboxes to track progress.
+
+      The order is fixed and MUST NOT be collapsed:
+      1. Reproduce: write the regression test and confirm it fails for the reason in
+         bug.md; then confirm the root cause with evidence.
+      2. Fix: minimal fix; regression test passes; full suite passes.
+      3. Record: flip the regression test State to green in bug.md and record evidence.
+
+      Tasks that touch the regression test reference it with
+      `[tests: <test name from bug.md>]`. You MAY add tasks for extra edge-case tests
+      found while confirming the root cause, but no fix task may come before the
+      reproduction tasks.
+    requires:
+      - specs
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    This schema fixes bugs test-first and root-cause-first.
+
+    1. **RED**: write the regression test from bug.md. Run it. It MUST fail, and it must
+       fail with the symptom described under Observed, not with an import error, a syntax
+       error, or a missing fixture. If it passes, the reproduction is wrong: STOP, revisit
+       bug.md with the user.
+    2. **ROOT CAUSE**: confirm the hypothesis before changing production code. Use a
+       trace, a log, a minimal experiment, or a bisect, and record the evidence in bug.md.
+       If the evidence refutes the hypothesis, update the Root Cause section, tell the
+       user, and re-check that the Fix Scope still holds.
+    3. **GREEN**: implement the minimal fix inside the Fix Scope. The regression test
+       passes. Then run the FULL suite: no new failures.
+    4. **RECORD**: set `State: green` in bug.md and fill Evidence with the exact commands
+       and their result summaries (regression test and full suite).
+
+    Violations (never do these):
+    - Changing the regression test's assertion to match the observed behavior.
+    - Fixing the symptom instead of the cause: catching and ignoring the error,
+      special-casing the reproduction input, adding a retry around a deterministic bug.
+    - Widening the fix beyond Fix Scope without updating bug.md and telling the user.
+    - Declaring the bug fixed without a fresh full-suite run recorded as evidence.
+
+    SPEC DRIFT: if the fix shows that the expected behavior itself was wrong, STOP.
+    Amend the delta spec and bug.md, tell the user what changed and why, then resume.

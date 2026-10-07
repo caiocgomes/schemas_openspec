@@ -1,0 +1,319 @@
+name: data-eng
+version: 2
+description: Data and analytics engineering (dbt, Dataform, Spark) - proposal → impact → specs → design → validation → rollout → tasks, with rigor set by a declared tier, the dataset contract as living spec, and logic-test-first apply
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Business decision served, consumers and scope of the data change
+    template: proposal.md
+    instruction: |
+      Create the proposal that establishes WHY this data change is needed.
+
+      Sections:
+      - **Why**: the business decision or product this dataset, model or metric serves,
+        and what is wrong or missing today. 1-3 sentences.
+      - **What Changes**: bullet list of datasets, models, metrics and pipelines created,
+        modified or removed. Mark breaking changes with **BREAKING**.
+      - **Capabilities**: one capability per dataset or metric whose CONTRACT is created
+        or changes. Use a kebab-case path nested by data domain, following the project's
+        existing layout (e.g., `sales/orders-daily`, `finance/gross-margin-metric`).
+        - **New Capabilities**: new datasets or metrics. Each becomes
+          specs/<domain>/<name>/spec.md.
+        - **Modified Capabilities**: existing ones whose contract changes. Use the exact
+          path from openspec/specs/ (confirm with `openspec list --specs`).
+        - **Retired datasets**: when the change removes a dataset entirely (every
+          requirement REMOVED), set `retire_capabilities: true` in this change's
+          `.openspec.yaml`, so archive deletes its main spec instead of stopping.
+      - **Consumers**: who reads the output (dashboards, models, teams, exports).
+      - **Scope / Non-scope**: what this change explicitly does not touch.
+
+      Use the project context from openspec/config.yaml (rendered as the <project_context>
+      block when configured): it names the stack (dbt, Dataform or Spark), the warehouse
+      and the conventions.
+    requires: []
+
+  - id: impact
+    generates: impact.md
+    description: Upstream and downstream impact, change classification and the tier that sets the rigor of every later artifact
+    template: impact.md
+    instruction: |
+      Create impact.md. It classifies the change and declares the TIER that decides how
+      much rigor every later artifact requires. This is the most important artifact of
+      the schema: read the code, the lineage and the sources before filling it.
+
+      CLASSIFICATION (machine-read lines; keep keys and values in English, exactly):
+      - `Change class: additive | column | model-wide`
+        - additive: new columns, new tables or new rows with no change to existing values.
+        - column: an existing column is removed, renamed, retyped or recomputed.
+        - model-wide: the grain changes, or a filter, join or GROUP BY changes which rows
+          or how many rows the model returns.
+      - `Breaking contract change: yes | no`: yes when an existing consumer can break
+        or silently receive different values (column removed, renamed or retyped, grain
+        changed, constraint tightened, SLA loosened). Adding a column is NOT breaking.
+      - `New columns: yes | no`
+      - `New PII: yes | no`: any new field that identifies or can re-identify a person.
+      - `Backfill: yes | no`: historical partitions must be recomputed or filled.
+      - `Critical consumer: yes | no`: a consumer whose error has financial, regulatory or
+        executive impact (finance close, pricing engine, regulatory report, board metric).
+      - `Tier: T1 | T2 | T3`
+
+      TIER DERIVATION. The declared tier MUST be at least the highest of:
+      - T1: additive change with every other line `no`.
+      - T2: `Change class: column`, or `Breaking contract change: yes`, or
+        `New PII: yes`, or `Backfill: yes`.
+      - T3: `Change class: model-wide`, or `Critical consumer: yes`.
+      You may declare a higher tier than derived; never a lower one. Explain the tier in
+      Tier Rationale. The tier is a hypothesis: if the diff during apply shows effects
+      beyond what is declared here, the tier goes up and the affected artifacts reopen.
+
+      Sections:
+      - **Classification**: the lines above.
+      - **Tier Rationale**: which criterion set the tier.
+      - **Upstream** (required from T2): input contracts the change relies on, and
+        profiling of the sources: key uniqueness, null rates, orphans in joins, value
+        ranges, arrival delay. Profile with queries and record the numbers.
+      - **Downstream** (required from T1): column-level lineage of what this change
+        touches, and the named consumers (dashboards, models, exports, teams) with owners.
+
+      RIGOR RULE (applies to every artifact of this schema): each template section carries
+      a `required:` comment. When the declared tier is at or above it, the section must be
+      filled. Below it, the section may contain `N/A: <reason>` with a real reason. Never
+      leave a section empty and never write a bare `N/A`.
+    requires:
+      - proposal
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: The dataset or metric contract written as requirements with data-assertable scenarios; becomes the living spec of the dataset
+    template: spec.md
+    instruction: |
+      Write the CONTRACT of each dataset or metric listed in the proposal as requirements.
+      At archive time these become the living spec of the dataset in openspec/specs/.
+      Use the vocabulary of the Open Data Contract Standard (ODCS 3.2 or later).
+
+      One spec file per capability, at the exact path from the proposal:
+      specs/<domain>/<name>/spec.md (or the project's existing layout). Do not move or
+      rename an existing capability.
+      - New dataset or metric: write the full contract under `## ADDED Requirements`.
+      - Existing one: write only the clauses this change touches, as a delta. MODIFIED
+        must copy the ENTIRE existing requirement block from openspec/specs/ and edit it.
+        REMOVED must include **Reason** and **Migration**. Adding a column usually
+        MODIFIES the schema requirement; that is still an additive change.
+
+      Contract clauses (one requirement each; tier from which the clause is mandatory
+      when the change touches it):
+      - Grain and primary key (T1).
+      - Columns: name, logical type, required or nullable (T1).
+      - PII classification and retention of each new or changed column (T1). NEVER omit
+        this for a new column, even when the answer is "no PII".
+      - Data quality rules with severity (T1).
+      - SLA: latency, refresh frequency, time to detect a failure (T2).
+      - Compatibility policy and active version (T2).
+      - Metric definition: type, measure, filter, exclusions, dimensions (whenever the
+        dataset publishes a metric).
+      - Owner and support channel (T1).
+
+      Reference the executable contract on its own line inside the relevant requirement:
+      `Contract: <contractId>@<version>` when the project uses ODCS, otherwise the path
+      of the enforcement artifact (dbt model contract, Dataform declaration, Spark schema).
+      The spec is the source of the REQUIREMENT; the executable contract in the data repo
+      is the source of ENFORCEMENT. They must agree.
+
+      Format rules:
+      - `### Requirement: <name>` with SHALL/MUST text.
+      - ONE clause per requirement. Keep the description (text between the requirement
+        header and its first scenario) at 500 characters or fewer: `openspec validate
+        --strict` fails above that. Put column lists and value sets in scenarios or in the
+        executable contract, not in the requirement text. Under MODIFIED, never trim
+        existing text just to meet the limit.
+      - `#### Scenario: <name>` (exactly 4 hashtags) with WHEN/THEN bullets.
+      - Every requirement needs at least one scenario, and every scenario must be
+        assertable against data: a count, a uniqueness check, a null rate, a value set,
+        a freshness timestamp, a reconciliation within a threshold.
+        Good: "THEN each (order_id, order_date) appears exactly once".
+        Bad: "THEN the data is correct".
+      - Scenario names must be unique within the change; validation.md references them.
+    requires:
+      - impact
+
+  - id: design
+    generates: design.md
+    description: Materialization, incremental strategy, field-level source-to-target mapping, idempotency, orchestration and cost
+    template: design.md
+    instruction: |
+      Create design.md: HOW the data will be produced. Follow the RIGOR RULE from
+      impact.md (each section's `required:` comment against the declared tier).
+
+      Sections:
+      - **Materialization** (required from T1): one machine-read line
+        `Materialization: table | view | incremental | ephemeral | streaming`, plus layer
+        (staging, intermediate, mart) and partitioning or clustering.
+      - **Incremental Strategy and Late Data** (required from T1): unique key, merge or
+        insert-overwrite, the lookback window, and how late-arriving rows are handled.
+        `N/A: <reason>` only when not incremental.
+      - **Field Mapping** (required from T1): a table with one row per new or changed
+        target field: target field, source fields, transformation, and kind
+        (`mapped` | `audit` | `system-generated`). Every published field must be one of
+        the three.
+      - **Idempotency and Reprocessing** (required from T2): what happens if a run is
+        repeated or a partition is reprocessed; how duplicates are prevented.
+      - **Orchestration** (required when the schedule, dependencies or retries change).
+      - **Cost Estimate** (required from T2, and always when `Backfill: yes`): bytes or
+        compute per run and for the backfill, with the method of estimation.
+      - **Decisions**: key choices with alternatives considered.
+      - **Risks / Trade-offs**: format `[Risk] -> Mitigation`.
+      - **Open Questions**: anything unresolved. Questions that would change what gets
+        built MUST be resolved with the user before tasks are written.
+    requires:
+      - specs
+
+  - id: validation
+    generates: validation.md
+    description: Ledger mapping every contract scenario to its evidence (logic test, data test, contract, reconciliation, diff, monitor), written before implementation
+    template: validation.md
+    instruction: |
+      Create validation.md: the plan of EVIDENCE for every contract scenario, written
+      before any model code changes. It doubles as the live red/green ledger.
+
+      Evidence types:
+      - `logic-test`: a test of the transformation logic on static fixture data. It is
+        the ONLY evidence that can legitimately be red before the model is built.
+      - `data-test`: an assertion on the built table (uniqueness, not null, accepted
+        values, relationships, row conditions).
+      - `contract`: the executable contract enforced at build time.
+      - `reconciliation` (required from T2): a query comparing against a source of truth,
+        with a numeric threshold (e.g., row count parity 0.1%, metric parity 0.05%).
+      - `diff` (required from T2): dev or shadow output compared with production, at row,
+        column and profile level.
+      - `monitor` (required from T2): a production monitor that enforces an SLA from the
+        spec (freshness, volume, test failure alert).
+
+      Stack equivalents (use the stack named in the project context):
+      | Mechanism | dbt | Dataform | Spark / PySpark |
+      | logic-test | unit test with given/expect (dbt 1.8+) | unit test in a .sqlx with type "test" and mocked input | pytest with fixture DataFrames and assertDataFrameEqual (PySpark 3.5+) |
+      | data-test | data tests | built-in assertions (nonNull, uniqueKey, rowConditions) and manual assertions | check queries on the materialized table |
+      | contract | model contract with enforced: true; ODCS when adopted | declared schema plus assertions; ODCS when adopted | explicit StructType checked with assertSchemaEqual; ODCS when adopted |
+      | versioning | model versions (latest_version, deprecation_date) | versioned table name plus a stable public view | versioned table name plus a stable public view |
+      | diff | Recce, data-diff or a comparison query | comparison query | DataFrame comparison |
+
+      Sections:
+      - **Stack and Commands**: stack, and the exact commands to run logic tests, build,
+        data tests and contract checks.
+      - **Ledger**: one row per (scenario, evidence). Every `#### Scenario:` in specs/
+        must appear at least once. Columns:
+        `| ID | Capability | Scenario | Evidence type | Check | Threshold | Observed | State |`
+        IDs are `V1`, `V2`, ... and are referenced by tasks.md as `[ledger: V1]`.
+        State starts as `red`; Observed starts empty.
+      - **Reconciliation** (required from T2): source of truth, query, threshold.
+      - **Diff Plan** (required from T2): what is compared, at which level, and what result
+        would contradict the impact classification.
+      - **SLA Monitors** (required from T2): monitor, threshold, alert channel.
+      - **Evidence**: left empty here; filled at the end of apply.
+    requires:
+      - specs
+      - design
+
+  - id: rollout
+    generates: rollout.md
+    description: Release strategy by change class, historical values decision, backfill, consumer migration, approvals and runbook
+    template: rollout.md
+    instruction: |
+      Create rollout.md: how the change reaches production without breaking consumers.
+      Follow the RIGOR RULE from impact.md.
+
+      Sections:
+      - **Strategy by Class** (required from T1):
+        - additive: direct deploy after validation.
+        - column: new version or new column alongside the old one, a deprecation date,
+          and the migration of each named consumer.
+        - model-wide: shadow run, reconciliation, cutover by swapping a view or alias,
+          and a rollback window.
+      - **Historical Values** (required from T1 whenever `New columns: yes`; NEVER N/A
+        when the model is incremental and gains a column): decide whether historical rows
+        keep NULL in the new column or are backfilled, and state what consumers will see.
+      - **Backfill Plan** (required when `Backfill: yes`): partitions or window, source of
+        truth, write strategy (merge or overwrite), dry run, publication paused during the
+        backfill, cost ceiling, and the reconciliation thresholds that gate publication.
+      - **Consumer Migration and Deprecation** (required from T2): per consumer, what
+        changes, the deadline, and who confirms.
+      - **Shadow Run and Cutover** (required from T3).
+      - **Rollback** (required from T1): how to revert. From T3 the rollback must be
+        tested before cutover.
+      - **Approvals** (required from T2): dataset owner and downstream owners, as
+        required vs granted.
+      - **Retirement** (required when a dataset is removed entirely): consumers migrated,
+        date the table is dropped, and confirmation that `retire_capabilities: true` is set
+        in `.openspec.yaml`. Otherwise `N/A: <reason>`.
+      - **Alerts and Runbook** (required from T3): alerts, on-call, first steps when the
+        dataset is late or wrong.
+    requires:
+      - impact
+      - design
+      - validation
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist where every task points to one file and one ledger item, logic tests first
+    template: tasks.md
+    instruction: |
+      Create the task list. The apply phase parses `- [ ]` checkboxes; a box holding only
+      `x` counts as done, every other marker reads as unfinished.
+
+      Before writing tasks, check design.md Open Questions. Resolve with the user any that
+      would change what gets built.
+
+      Rules:
+      - Every task that produces or changes model code, tests or checks references its
+        ledger items: `- [ ] X.Y Description [ledger: V1, V2]`. IDs must exist in
+        validation.md.
+      - Each task states how its completion is verified (which ledger rows turn green,
+        which command passes).
+      - Each group lands the tests its own work calls for. Never collect tests into a
+        final group; a final group is for integration evidence only (reconciliation,
+        diff, full build).
+      - Archive and other untracked follow-up go as plain bullets in an optional
+        `## Workflow follow-up` section at the end.
+      - In every group that changes transformation logic, the FIRST task writes the
+        failing `logic-test`. Never collapse "write test" and "implement" into one task.
+      - One task, one file where possible. Avoid vague tasks such as "update models".
+      - Order: logic tests -> model code -> build with contract -> data tests ->
+        reconciliation and diff -> rollout steps -> evidence.
+      - Rollout steps that touch production (backfill, cutover, dropping or renaming a
+        table) are separate tasks and say "with explicit user confirmation".
+    requires:
+      - rollout
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    This schema implements data changes test-first and evidence-first.
+
+    For each group of tasks:
+    1. **RED**: write the `logic-test` on static fixture data. Run it. It MUST fail for the
+       right reason (wrong or missing output), not because of a syntax error or a broken
+       fixture. Data tests cannot be red before the table exists; only logic tests can.
+    2. **GREEN**: write the minimum model code to make the logic test pass.
+    3. **BUILD**: build in dev with the executable contract enforced. Run the data tests
+       and the contract checks.
+    4. **RECONCILE AND DIFF** (from T2): run the reconciliation queries and record the
+       observed value next to the threshold in the ledger. Run the diff against production.
+    5. **MARK**: flip ledger rows to `green` only with an observed result. Check off tasks
+       only after their ledger rows are green.
+
+    TIER CHECK: if the diff shows changed rows, columns or values beyond what impact.md
+    declares (a supposedly additive change that alters existing values, a grain change
+    nobody declared), STOP. Raise the tier, reopen impact.md, validation.md and rollout.md,
+    and tell the user before continuing.
+
+    Never:
+    - Weaken a test, a threshold or a contract clause to make the evidence pass. If the
+      contract is wrong, amend the spec and tell the user (spec drift).
+    - Run a backfill, a cutover, a production DDL, or drop or rename a production table
+      without explicit confirmation from the user in this session.
+    - Mark a reconciliation green without the observed value recorded.
+
+    FINISHING: run the full logic test suite, the build with contracts and the data tests
+    fresh. Record the exact commands and result summaries in the Evidence section of
+    validation.md. Every ledger row must be green or carry `N/A: <reason>` allowed by the
+    tier.

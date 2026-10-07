@@ -1,0 +1,87 @@
+# Requires OpenSpec >= 1.10.0: older versions reject changes without spec deltas in 'openspec validate'.
+name: spike
+version: 2
+description: Timeboxed engineering feasibility probe - question → tasks → apply → findings; throwaway code, findings written only after the probe
+artifacts:
+  - id: question
+    generates: question.md
+    description: Feasibility question, the decision that depends on it, timebox, success criterion and where the throwaway code lives
+    template: question.md
+    instruction: |
+      Create question.md for a spike: a timeboxed probe that answers whether something can
+      be built, or how a technology behaves, before committing to build it.
+
+      A spike is NOT:
+      - a conversation to decide whether a change exists (use explore, no files);
+      - an analytical question about the business answered with data (use the research
+        schema, exploratory mode);
+      - the first iteration of the real implementation (its code is thrown away).
+
+      Sections:
+      - **Question**: one feasibility question with a yes/no or this-or-that answer.
+      - **Decision Depending on It**: what will be built, bought or abandoned based on the
+        answer.
+      - **Timebox**: one machine-read line in English, `Timebox: <duration>` (e.g. `2d`,
+        `4h`). When the timebox ends, the spike ends, answered or not.
+      - **Success Criterion**: the observable result that answers the question.
+      - **Stop Signal**: the result that ends the spike early (e.g., a hard blocker found).
+      - **Throwaway Location**: the branch or directory where the probe code lives. It is
+        never merged into the main code.
+      - **Out of Scope**: what the probe will not try, to keep it inside the timebox.
+    requires: []
+
+  - id: tasks
+    generates: tasks.md
+    description: Probe steps, cheapest first
+    template: tasks.md
+    instruction: |
+      Create the task list for the probe. The apply phase parses `- [ ]` checkboxes.
+
+      - Order the steps from the cheapest one that could answer the question to the most
+        expensive one.
+      - Each step states what result it is looking for.
+      - No task merges probe code into the main code.
+      - Do NOT add a task for findings: findings.md is the `findings` artifact, produced
+        after the probe. Mention it in an optional `## Workflow follow-up` section as a
+        plain bullet.
+    requires:
+      - question
+
+  - id: findings
+    generates: findings.md
+    description: Answer, recommendation, timebox status, evidence and what was discarded
+    template: findings.md
+    instruction: |
+      PRECHECK - this artifact is written AFTER the probe, never during planning. The
+      `requires: [tasks]` edge exists only for graph order. Check that no unchecked task
+      remains in tasks.md (must print 0):
+        grep -cE '^\s*([-*+]|[0-9]+[.)]) \[ \]' openspec/changes/<change-name>/tasks.md
+      If any remain, STOP. Steps left undone because the timebox ended or the stop signal
+      fired are checked and annotated `(abandoned: <reason>)`, so the record stays honest.
+
+      Write findings.md:
+      - **Answer**: yes, no, or this-or-that, with the confidence the probe supports.
+      - **Recommendation**: build, buy or abandon. If the work continues, it continues as a
+        new change with the appropriate schema, never on the spike's code.
+      - **Timebox**: one machine-read line `Timebox status: met | exceeded`, and the time
+        actually spent.
+      - **Evidence**: commands, outputs, links to the throwaway code.
+      - **Discarded**: what was tried and abandoned, and why.
+    requires:
+      - tasks
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    Run the probe inside the timebox.
+
+    - Write probe code only in the Throwaway Location declared in question.md.
+    - Stop at the Stop Signal or when the Timebox ends, whichever comes first. If the
+      timebox is about to end without an answer, stop and report what is known; do not
+      extend the timebox silently. Mark the steps left undone as checked with
+      `(abandoned: <reason>)`.
+    - Record commands and outputs that support the answer as you go.
+
+    FINISHING: produce the `findings` artifact
+    (`openspec instructions findings --change <change-name>`).

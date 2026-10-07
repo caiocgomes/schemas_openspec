@@ -1,0 +1,265 @@
+# Requires OpenSpec >= 1.10.0: older versions reject changes without spec deltas in 'openspec validate'.
+name: research
+version: 2
+description: Analytical research (exploratory, confirmatory, causal, forecast, model) - question → data-audit → analysis-plan → checks → tasks → apply → results → findings; plan pre-registered and frozen before any run, results and findings only after execution
+artifacts:
+  - id: question
+    generates: question.md
+    description: The research question, the decision it informs, and the declared mode that sets the required rigor
+    template: question.md
+    instruction: |
+      Create question.md. It states what we want to know, which decision depends on it,
+      and the MODE that decides which sections of the analysis plan are mandatory.
+
+      Sections:
+      - **Question**: one precise question. For confirmatory, causal, forecast and model
+        modes, phrase it as a claim that data can support or refute.
+      - **Decision Informed**: the business decision this answer feeds, and when it will
+        be taken.
+      - **Decision Owner**: who takes the decision.
+      - **What Would Change the Decision**: which answer leads to which action. If no
+        possible answer changes the decision, say so: the research may not be worth doing.
+      - **Mode**: one machine-read line in English, `Mode: <mode>`, where mode is:
+        - `exploratory`: open-ended look at the data to generate hypotheses. Its findings
+          cannot be presented as confirmed.
+        - `confirmatory`: tests pre-stated hypotheses with a pre-stated inference criterion.
+        - `causal`: estimates the effect of an intervention or exposure from experimental
+          or observational data, with explicit identification assumptions.
+        - `forecast`: predicts future values; judged by backtest against a naive baseline.
+        - `model`: trains or changes a model that is a candidate for production; judged
+          against a pre-registered promotion threshold.
+      - **Mode Rationale**: why this mode and not a lighter one. Choosing `exploratory` to
+        avoid pre-registration when a decision will be taken on the result is the failure
+        this schema exists to prevent.
+
+      Use the project context from openspec/config.yaml (rendered as the <project_context>
+      block when configured) for data sources, tools and conventions.
+    requires: []
+
+  - id: data-audit
+    generates: data-audit.md
+    description: Sources, snapshot, counts, defects, missing-vs-zero, and what has already been seen in these data
+    template: data-audit.md
+    instruction: |
+      Create data-audit.md BEFORE the analysis plan. It documents the data as it is, not
+      the answer. In retail the data always exists before the question, so prior exposure
+      to the data must be declared: knowing the dataset biases the hypotheses.
+
+      Sections:
+      - **Sources and Snapshot**: tables, files or APIs; the time window; and one
+        machine-read line `Snapshot: <identifier or hash>` that pins the exact data used.
+      - **Data Layers**: where raw (immutable), processed (versioned) and output data live.
+        Raw is never modified by the analysis.
+      - **Counts and Coverage**: row counts, entities, period covered, gaps.
+      - **Known Defects**: duplicates, outliers, broken periods, changes of definition.
+      - **Missing vs Zero**: for each key variable, how missing values appear and why they
+        must not be read as zero (or why they may).
+      - **Prior Exposure**: what has already been seen in these data, by whom, in which
+        previous analyses, and which results are already known.
+      - **Outcome-Treatment Blinding** (required in confirmatory and causal modes):
+        an explicit statement that the outcome was NOT cross-tabulated against the
+        treatment or exposure while preparing this audit. If it was, say so, and the mode
+        must drop to exploratory or the analysis must use a fresh holdout.
+
+      Allowed during the audit: counts, distributions of single variables, quality checks.
+      Not allowed in confirmatory and causal modes: any look at the outcome by treatment,
+      by segment of interest, or by the hypothesized driver.
+
+      Sections that do not apply to the declared mode contain `N/A: <reason>`. Never leave
+      a section empty.
+    requires:
+      - question
+
+  - id: analysis-plan
+    generates: analysis-plan.md
+    description: Pre-analysis plan with hypotheses, specification and mode-specific protocol, frozen before any run
+    template: analysis-plan.md
+    instruction: |
+      Create analysis-plan.md, the pre-analysis plan. It is FROZEN before any run (first
+      task of tasks.md). After the freeze it is never edited: every later change is a
+      deviation recorded in deviations.md.
+
+      Each template section carries a `required:` comment listing the modes in which it is
+      mandatory. In the other modes it contains `N/A: <reason>`. Never leave a section
+      empty.
+
+      Sections:
+      - **Hypotheses** (all modes): each as `### H<n>: <statement>` with direction or
+        estimand. In exploratory mode, write the guiding questions as `### H<n>:` too and
+        label them as exploratory.
+      - **Variable Construction** (all modes): how each variable is built (logs, windows,
+        winsorization, aggregation level).
+      - **Specification** (all modes): estimator or model, covariates, functional form,
+        unit of analysis, clustering of errors.
+      - **Missing Data and Outliers** (all modes): rule decided now, not after the results.
+      - **Multiple Comparisons** (confirmatory, causal, model): how many outcomes or tests,
+        and the correction or the single primary outcome.
+      - **Inference Criteria** (confirmatory, causal): what counts as support or
+        refutation (interval, threshold, minimum effect of interest).
+      - **Pre-declared Robustness** (confirmatory, causal, forecast): the alternative
+        specifications that will be reported whatever they show.
+      - **Causal Protocol** (causal), following the TARGET statement: eligibility,
+        treatment strategies, assignment, time zero, outcome, causal contrast,
+        identification assumptions, and the mapping of each element to the data.
+      - **Forecast Protocol** (forecast): backtest design (rolling or expanding origin,
+        number of folds), naive baseline, metric, horizon.
+      - **Model Protocol** (model): train/validation/test split, leakage controls (feature
+        timing, target leakage, entity overlap), baseline, metric, and the promotion
+        threshold fixed now.
+      - **Holdout** (confirmatory, forecast, model): data set aside and untouched until the
+        final run.
+
+      Writing the plan does not require looking at outcomes. If you need a result to
+      decide the specification, the mode is exploratory.
+    requires:
+      - data-audit
+
+  - id: checks
+    generates: checks.md
+    description: Executable checks, each paired with the mutation that breaks it
+    template: checks.md
+    instruction: |
+      Create checks.md: executable checks that guard the analysis against silent errors.
+      Each check comes with the MUTATION that must make it fail, so the check is proven
+      to be able to fail.
+
+      Mandatory baseline checks (keep them, adapt the commands):
+      - C1 raw data unchanged (hash of raw inputs equals the audited snapshot).
+      - C2 row counts preserved across joins (or the expected loss is explained).
+      - C3 fixed random seed for every stochastic step.
+      - C4 a clean rerun from raw reproduces every reported number.
+      - C5 missing values are not silently converted to zero.
+      Add analysis-specific checks (e.g., treatment assignment balance, no future data in
+      features, no entity overlap between train and test).
+
+      Table columns: `| ID | Check | Command | Mutation that breaks it | State |`.
+      State starts as `red` (not yet implemented).
+    requires:
+      - analysis-plan
+
+  - id: tasks
+    generates: tasks.md
+    description: Checklist starting with the plan freeze, then checks and the analysis runs
+    template: tasks.md
+    instruction: |
+      Create the task list. The apply phase parses `- [ ]` checkboxes; a box holding only
+      `x` counts as done, every other marker reads as unfinished.
+
+      Fixed structure:
+      1. **Freeze** (always task 1.1): first confirm that the Mode in question.md still
+         matches what the audit allowed. If data-audit.md reports that blinding was broken
+         in confirmatory or causal mode, change the Mode to exploratory (or plan a fresh
+         holdout) BEFORE freezing. Then compute SHA-256 of question.md, data-audit.md,
+         analysis-plan.md and checks.md (`shasum -a 256` on macOS, `sha256sum` on Linux)
+         and write them on the task line as
+         `question.md=<sha> data-audit.md=<sha> analysis-plan.md=<sha> checks.md=<sha>`.
+         Then commit the four files, or ask the user to, so the freeze lives in git history.
+      2. **Checks**: implement each check and prove it fails under its mutation.
+      3. **Analysis**: implementation and runs, one task per run that produces reported
+         numbers.
+
+      Each task states how its completion is verified (a check passes, a manifest exists
+      in runs/, a command exits 0).
+
+      Do NOT add tasks that write results or findings: those are the `results` and
+      `findings` artifacts, produced after every task here is checked. Put them as plain
+      bullets in an optional `## Workflow follow-up` section at the end.
+    requires:
+      - analysis-plan
+      - checks
+
+  - id: results
+    generates: results.md
+    description: Pre-specified results, hypothesis by hypothesis in plan order, every number tied to a run manifest
+    template: results.md
+    instruction: |
+      PRECHECK - this artifact is written AFTER apply, never during planning. The
+      `requires: [tasks]` edge exists only for graph order. Before writing anything, check
+      all three. If any fails, STOP and tell the user the analysis has not run yet; do not
+      create results.md.
+      1. The freeze line exists in tasks.md (task 1.1 checked, four `=<sha>` hashes).
+      2. At least one run manifest exists: `ls openspec/changes/<change-name>/runs/*.json`.
+      3. No unchecked task remains in tasks.md (must print 0):
+         grep -cE '^\s*([-*+]|[0-9]+[.)]) \[ \]' openspec/changes/<change-name>/tasks.md
+
+      Then write results.md:
+      - `## Pre-specified`: one block `### H<n>: <hypothesis exactly as in the plan>` per
+        hypothesis, in plan order, INCLUDING null and failed ones. Each block: estimate or
+        metric, uncertainty, verdict against the pre-declared criterion
+        (`supported | refuted | inconclusive`), and `run: <run-id>` for every number.
+      - `## Not pre-specified (observational)`: anything else, labeled
+        hypothesis-generating.
+      - `## Deviations Applied`: which entries of deviations.md affect which results.
+        Results affected by an `after-results` deviation are observational.
+
+      Never drop a pre-registered hypothesis because it came out null. Never replace the
+      pre-registered metric or threshold: report it, and put any extra metric in the
+      observational block.
+    requires:
+      - tasks
+
+  - id: findings
+    generates: findings.md
+    description: Answer, recommendation, limitations and what would change the conclusion; model card in model mode
+    template: findings.md
+    instruction: |
+      PRECHECK: results.md exists and contains `## Pre-specified`. If not, STOP.
+
+      Write findings.md:
+      - **Answer**: the answer to the question in question.md, in one paragraph.
+      - **Recommendation**: what to do, tied to "What Would Change the Decision".
+      - **Evidence Level**: one machine-read line `Evidence level: pre-registered |
+        exploratory | observational`. Map it from the mode and the deviations:
+        confirmatory, causal, forecast and model results that followed the frozen plan
+        are `pre-registered`; exploratory mode is `exploratory`; anything from the
+        "Not pre-specified" block or touched by an `after-results` deviation is
+        `observational`. When the recommendation rests on exploratory or observational
+        results and supports a decision, it MUST carry the line
+        `Decision under exploratory evidence` and fill `## Confirmatory Next Step` with
+        the analysis that would confirm or revise it.
+      - **Limitations**: threats to validity, data defects that remained, deviations.
+      - **What Would Change the Conclusion**.
+      - **Confirmatory Next Step**: required as above; otherwise `N/A: <reason>`.
+      - **Model Card** (required in model mode; otherwise `N/A: <reason>`): training data
+        (snapshot), holdout metrics against the baseline and against the pre-registered
+        promotion threshold, error by segment, limitations, and the decision
+        (`promote | iterate | discard`) justified by the threshold in the plan.
+    requires:
+      - results
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    This schema runs pre-registered analysis. Results exist only after the runs.
+
+    1. **FREEZE FIRST**: execute task 1.1 before anything else. From then on, never edit
+       question.md, data-audit.md, analysis-plan.md or checks.md. Any change of plan is a
+       DEVIATION: append an entry to deviations.md in the change folder (create it on
+       first use):
+       ```
+       ### D<n> (<YYYY-MM-DD>) [before-results|after-results]
+       - **What changed**: ...
+       - **Why**: ...
+       - **Impact on interpretation**: ...
+       ```
+       deviations.md only grows. A typo in an entry is fixed by a new entry, never by
+       editing an old one. `after-results` deviations make the affected results
+       observational, not confirmatory.
+    2. **CHECKS BEFORE ANALYSIS**: implement each check, apply its mutation, confirm the
+       check fails, revert the mutation, confirm it passes. Flip its State to `green`.
+    3. **RUN WITH A MANIFEST**: every execution that produces a number reported later gets
+       a run manifest in the change folder, `runs/<run-id>.json`, with: run_id, started_at,
+       finished_at, command, exit_code, git_commit, git_dirty, seed, snapshot, and the
+       SHA-256 of the lockfile in use (uv.lock, poetry.lock, requirements*.txt,
+       package-lock.json). Save the tail of stdout and stderr to `runs/<run-id>.log`.
+       Use the processed data built from the audited snapshot; raw stays immutable.
+    4. **FINISHING**: when every task is checked, produce the `results` artifact
+       (`openspec instructions results --change <change-name>`), then the `findings`
+       artifact. Their instructions carry the required structure.
+
+    Never:
+    - Look at outcome by treatment before the freeze in confirmatory or causal mode.
+    - Describe observational or exploratory results as confirmed.
+    - Edit a frozen artifact. Use deviations.md.
+    - Report a number without a run manifest behind it.
