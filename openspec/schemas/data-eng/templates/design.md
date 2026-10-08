@@ -1,5 +1,13 @@
 # Design
 
+## Model Interface
+
+<!-- required: T1. One row per model created or changed; output schema from the contract. The red gate creates stubs with exactly this schema. -->
+
+| Model | File | Columns (name type nullable) |
+|-------|------|------------------------------|
+| <!-- model --> | <!-- path --> | <!-- order_id INT64 not null, ... --> |
+
 ## Materialization
 
 <!-- required: T1. Machine-read line in English. -->

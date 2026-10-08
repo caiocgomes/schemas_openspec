@@ -1,6 +1,6 @@
 # openspec-kit: schemas do OpenSpec para o time
 
-Versão do kit: **3.0.1** (histórico em [CHANGELOG.md](CHANGELOG.md)).
+Versão do kit: **4.0.0** (histórico em [CHANGELOG.md](CHANGELOG.md)).
 
 Cinco schemas de workflow para o [OpenSpec](https://openspec.dev), prontos para copiar para dentro de um projeto. Cada schema define quais documentos uma change produz, em que ordem e com quais instruções o agente de IA trabalha em cada etapa. Os schemas não dependem de uma ferramenta de agente específica: funcionam com qualquer uma suportada pelo OpenSpec.
 
@@ -10,7 +10,7 @@ Cinco schemas de workflow para o [OpenSpec](https://openspec.dev), prontos para 
 |--------|--------|----------|-------|-----------------|
 | `sdd-tdd` | 3 | Funcionalidade nova ou mudança de comportamento em software | proposal, specs, design, tests, tasks; apply com portão vermelho; evidence | 1.6.0 |
 | `bugfix` | 2 | Comportamento errado em algo que já existe | bug, specs, tasks | 1.6.0 |
-| `data-eng` | 2 | Modelo, tabela, pipeline ou métrica em dbt, Dataform ou Spark | proposal, impact, specs, design, validation, rollout, tasks | 1.6.0 |
+| `data-eng` | 3 | Modelo, tabela, pipeline ou métrica em dbt, Dataform ou Spark, com Data TDD | proposal, impact, specs, design, validation, rollout, tasks; apply com portão vermelho; evidence | 1.6.0 |
 | `research` | 2 | Pergunta analítica, inferência causal, forecast ou experimento de modelo | question, data-audit, analysis-plan, checks, tasks; apply; results, findings | 1.10.0 |
 | `spike` | 2 | Descobrir se algo é viável, com prazo fixo e código descartável | question, tasks; apply; findings | 1.10.0 |
 
@@ -79,6 +79,16 @@ O OpenSpec só confere se os arquivos existem, então a disciplina vem de três 
 3. **Evidência no fim.** O artefato `evidence` refaz o estado vermelho, confere o congelamento, registra uma mutação por capability e a suíte completa, e termina em `DECISION: PASS` ou `DECISION: FAIL`.
 
 Se a skill `superpowers:test-driven-development` estiver instalada, o agente a usa no laço interno (testes unitários). Se não estiver, segue as regras embutidas no schema. O `evidence.md` registra qual caminho foi usado.
+
+## Como o `data-eng` aplica Data TDD
+
+Mesma disciplina do `sdd-tdd`, com a mecânica de dados:
+
+1. **Testes de lógica com fixture isolada.** Todo cenário sobre a saída da transformação (grão, valores, campos derivados, métricas) ganha um teste com dados de entrada fixos e saída esperada, um arquivo de fixture por teste, nunca compartilhado. Todo modelo alterado ganha um teste de grão, cuja fixture tem chave duplicada ou join um-para-muitos, para pegar duplicação por join.
+2. **Portão vermelho com stubs.** Antes de qualquer lógica, cada modelo vira um stub com o schema exato do contrato e zero linhas. Os testes de lógica precisam falhar por asserção contra os stubs; o commit `test(red)` guarda testes, fixtures, contrato e stubs; o agente para até a aprovação.
+3. **Testes que passam vazios.** Unicidade, não nulo, valores aceitos e relacionamento passam numa tabela vazia. O plano marca esses testes como `Vacuous on empty: yes`, e o cenário precisa de outra evidência que não passe no vazio.
+4. **Mutação.** Cada teste declara o "Breaks if": uma mutação no modelo (tirar condição de join, remover filtro, errar a janela de data) ou na fixture (duplicata, nulo, chave órfã). No fim, ao menos uma mutação por modelo alterado precisa ser pega por algum teste. Isso também protege contra frameworks que deixam teste passar sem comparar de fato, como as versões do dbt Fusion que ignoram colunas TIMESTAMP no `expect`.
+5. **Evidência.** O artefato `evidence` refaz o estado vermelho, confere o congelamento de testes e fixtures, registra as mutações, os resultados de build e testes e termina em `DECISION: PASS` ou `DECISION: FAIL`.
 
 ## Opcional: contratos de dados compartilhados entre repositórios
 

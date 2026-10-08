@@ -177,7 +177,12 @@ Instrução do apply: sem fix antes de teste vermelho; sem fix antes de causa ra
 
 Na v2: título nos templates, caminho exato da capability (`openspec list --specs`) e limite de 500 caracteres para requisito novo.
 
-### 8.3 `data-eng` (v2)
+### 8.3 `data-eng` (v3, Data TDD)
+
+Na v3 (08/10/2026, kit 4.0.0): o `data-eng` ganha a disciplina do `sdd-tdd` v3 com mecânica de dados. O design ganha Model Interface (schema de saída de cada modelo, usado pelos stubs). O validation vira plano de testes: teste de lógica com fixture isolada para todo cenário sobre a saída da transformação, teste de grão obrigatório por modelo alterado, "Breaks if" (mutação de modelo ou de fixture), falha esperada contra o stub e marcação `Vacuous on empty` para testes que passam em tabela vazia. O tasks abre com portão vermelho (stubs com o schema exato e zero linhas, falha por asserção, commit `test(red)`, parada para aprovação); testes e fixtures ficam congelados depois do vermelho; uma checagem de mutação por modelo alterado, e por cláusula de contrato a partir de T2. Novo artefato `evidence` pós-apply, com pré-checagem e `DECISION: PASS | FAIL`. Base: unit tests do dbt (que a documentação apresenta como habilitadores de TDD), relatos da Equal Experts e do startdataengineering, tSQLt, operadores de mutação de SQL da literatura e os bugs de teste que passa sem comparar no dbt Fusion (issues 15894 e 16650).
+
+Histórico da v2:
+
 
 Na v2: capability aninhada por domínio (`specs/<domínio>/<dataset>/spec.md`); `retire_capabilities: true` e a seção Retirement do rollout quando um dataset sai inteiro; um clause por requisito com descrição de até 500 caracteres; Open Questions no design, resolvidas antes das tarefas; cada tarefa declara como é verificada, e o grupo final é só de evidência de integração.
 
@@ -350,7 +355,7 @@ Comuns:
 
 ## 12. Versionamento e atualização
 
-O kit usa tags semver (`v1.0.0`). Cada schema tem `version:` inteiro no `schema.yaml` (estado em 02/10/2026: `sdd-tdd` 3; `bugfix`, `data-eng`, `research` e `spike` 2). O `manifest.json` do projeto registra os dois. Atualizar um projeto é `install.sh --force`, que recopia os schemas instalados e o `kit/`, mantendo o padrão do projeto. Atualizar a versão do OpenSpec é uma release do kit: muda `OPENSPEC_VERSION`, roda o e2e, e cada projeto roda `profile_drift.sh --fix` depois de instalar a versão nova. Mudanças já em andamento passam a usar a cópia nova na próxima etapa, porque as instruções valem por artefato.
+O kit usa tags semver (`v1.0.0`). Cada schema tem `version:` inteiro no `schema.yaml` (estado em 08/10/2026: `sdd-tdd` 3, `data-eng` 3; `bugfix`, `research` e `spike` 2). O `manifest.json` do projeto registra os dois. Atualizar um projeto é `install.sh --force`, que recopia os schemas instalados e o `kit/`, mantendo o padrão do projeto. Atualizar a versão do OpenSpec é uma release do kit: muda `OPENSPEC_VERSION`, roda o e2e, e cada projeto roda `profile_drift.sh --fix` depois de instalar a versão nova. Mudanças já em andamento passam a usar a cópia nova na próxima etapa, porque as instruções valem por artefato.
 
 O repositório `sdd-tdd` recebe um README apontando para o kit e uma tag final.
 
